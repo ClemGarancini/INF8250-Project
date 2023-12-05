@@ -3,3 +3,6 @@
 
 # CSV Files
 *.csv
+
+# docx
+*.docx
