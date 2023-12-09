@@ -39,7 +39,9 @@ class StockTradingEnvironment(baseEnv.TradingEnvironment):
         index %= 11 * 6
         pepsi_shares = index // 11
         balance_index = index % 11
-        return [balance_index, pepsi_shares, cola_shares, trend_pepsi, trend_cola]
+        return np.array(
+            [balance_index, pepsi_shares, cola_shares, trend_pepsi, trend_cola]
+        )
 
     def _get_indicator(self, step: int, stock_data: pd.DataFrame) -> int:
         trend = self._get_stock_trend(step, stock_data)
@@ -129,7 +131,7 @@ class StockTradingEnvironment(baseEnv.TradingEnvironment):
         return balance + pepsi_holdings_value + cola_holdings_value
 
     def reset(self) -> None:
-        self.state = [15, 0, 0, 0, 0]  # Reset to initial state
+        self.state = np.array([15, 0, 0, 0, 0])  # Reset to initial state
         self.current_step = 0
         self.previous_portfolio_value = self._calculate_portfolio_value()
         return self.convert_state_to_index(self.state)
