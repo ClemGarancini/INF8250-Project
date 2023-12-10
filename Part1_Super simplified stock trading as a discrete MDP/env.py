@@ -1,19 +1,21 @@
 import numpy as np
 import pandas as pd
-from ..baseClasses import baseEnv
+from ..baseClasses.baseEnv import TradingEnvironment
 
 
-class StockTradingEnvironment(baseEnv.TradingEnvironment):
+class SimplifiedDiscreteTradingEnvironment(TradingEnvironment):
     def __init__(self, pepsi_file: str, cola_file: str):
-        self.observation_dim = 5
-        self.action_dim = 4
+        self.observation_dim = (
+            5  # [Balance, Shares Pepsi, Shares Cola, Trend Pepsi, Trend Cola]
+        )
+        self.action_dim = 4  # 0 = Sell all, 1 = Hold, 2 = Buy Pepsi, 3 = Buy Cola
         super.__init__(pepsi_file, cola_file, self.observation_dim, self.action)
 
         self.balance_unit = 10
         self.max_balance_units = 10
         self.max_shares_per_stock = 5
 
-        self.state_space = (
+        self.max_state_index = (
             11 * 6 * 6 * 2 * 2
         )  # 11 balances, 6 shares each for Pepsi and Cola, 2 trends each
 
@@ -21,33 +23,25 @@ class StockTradingEnvironment(baseEnv.TradingEnvironment):
             [15, 0, 0, 0, 0]
         )  # Initial state: [Balance, Pepsi shares, Cola shares, Trend of Pepsi, Trend of Cola]
 
-    def convert_state_to_index(self, state: np.array) -> int:
-        balance_index, pepsi_shares, cola_shares, trend_pepsi, trend_cola = state
-        index = balance_index
-        index += pepsi_shares * 11
-        index += cola_shares * 11 * 6
-        index += trend_pepsi * 11 * 6 * 6
-        index += trend_cola * 11 * 6 * 6 * 2
-        return int(index)
+    def __str__(self) -> str:
+        info = """The environment is a Simplified Discrete Trading Problem (Experiment 1).\n 
+        It is using the stocks: {}, {}.\n 
+        The episode is at the timestep {}\n
+        The current stock prices are {}\n
+        Amount of shares held by the agent: {}\n
+        Left balance: {}"""
+        return info
 
-    def convert_index_to_state(self, index: int) -> np.array:
-        trend_cola = index // (11 * 6 * 6 * 2)
-        index %= 11 * 6 * 6 * 2
-        trend_pepsi = index // (11 * 6 * 6)
-        index %= 11 * 6 * 6
-        cola_shares = index // (11 * 6)
-        index %= 11 * 6
-        pepsi_shares = index // 11
-        balance_index = index % 11
-        return np.array(
-            [balance_index, pepsi_shares, cola_shares, trend_pepsi, trend_cola]
-        )
+    def step(self, action: int) -> tuple(np.array, float, bool):
+        return super.step(action)
 
-    def _get_indicator(self, step: int, stock_data: pd.DataFrame) -> int:
-        trend = self._get_stock_trend(step, stock_data)
-        return int(trend > 0)
+    def reset(self) -> np.array:
+        self.state = np.array([15, 0, 0, 0, 0])  # Reset to initial state
+        self.current_step = 0
+        self.portfolio_value = self._compute_portfolio_value()
+        return self.state
 
-    def _trade(self, action: int) -> tuple(int, int, int):
+    def _trade(self, action: int) -> np.array:
         """
         Trade the desired amount
 
@@ -86,39 +80,14 @@ class StockTradingEnvironment(baseEnv.TradingEnvironment):
         # Update state with rounded balance
         new_balance = max(int(balance / self.balance_unit), 0), self.max_balance_units
 
-        return new_balance, shares_pepsi, shares_cola
+        trend_pepsi = self._get_indicator(self.current_step, self.pepsi_data)
+        trend_cola = self._get_indicator(self.current_step, self.cola_data)
 
-    def step(self, action: int) -> tuple(int, float, bool):
-        """
-        Update the environment with action taken by the agent
+        return np.array(new_balance, shares_pepsi, shares_cola, trend_pepsi, trend_cola)
 
-        Args:
-            action: int, The action taken by the agent
-
-        Returns:
-            next_state_index: int, The index of the next state
-            reward: float, The reward returned by the environment
-            done: bool, Is the episode terminated or truncated
-        """
-        if action not in range(self.action_space):
-            raise ValueError(
-                "Invalid action. Action should be in {}".format(
-                    list(range(self.action_space))
-                )
-            )
-
-        new_balance, new_shares_pepsi, new_shares_cola = self._trade(action)
-        self.current_step += 1
-
-        # Update state
-        self._update_state(new_balance, new_shares_pepsi, new_shares_cola)
-
-        # Compute reward and update portfolio value
-        reward = self._compute_reward()
-
-        done = self.current_step >= len(self.pepsi_data) - 1
-        next_state_index = self.convert_state_to_index(self.state)
-        return next_state_index, reward, done
+    def _get_indicator(self, step: int, stock_data: pd.DataFrame) -> int:
+        trend = self._get_stock_trend(step, stock_data)
+        return int(trend > 0)
 
     def _compute_portfolio_value(self) -> float:
         balance = self.state[0] * self.balance_unit
@@ -130,8 +99,24 @@ class StockTradingEnvironment(baseEnv.TradingEnvironment):
         )
         return balance + pepsi_holdings_value + cola_holdings_value
 
-    def reset(self) -> None:
-        self.state = np.array([15, 0, 0, 0, 0])  # Reset to initial state
-        self.current_step = 0
-        self.previous_portfolio_value = self._calculate_portfolio_value()
-        return self.convert_state_to_index(self.state)
+    def convert_state_to_index(self, state: np.array) -> int:
+        balance_index, pepsi_shares, cola_shares, trend_pepsi, trend_cola = state
+        index = balance_index
+        index += pepsi_shares * 11
+        index += cola_shares * 11 * 6
+        index += trend_pepsi * 11 * 6 * 6
+        index += trend_cola * 11 * 6 * 6 * 2
+        return int(index)
+
+    def convert_index_to_state(self, index: int) -> np.array:
+        trend_cola = index // (11 * 6 * 6 * 2)
+        index %= 11 * 6 * 6 * 2
+        trend_pepsi = index // (11 * 6 * 6)
+        index %= 11 * 6 * 6
+        cola_shares = index // (11 * 6)
+        index %= 11 * 6
+        pepsi_shares = index // 11
+        balance_index = index % 11
+        return np.array(
+            [balance_index, pepsi_shares, cola_shares, trend_pepsi, trend_cola]
+        )

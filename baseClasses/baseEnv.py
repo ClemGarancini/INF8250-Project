@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from abc import abstractmethod
+from typing import Tuple
 
 
 class TradingEnvironment:
@@ -16,7 +17,7 @@ class TradingEnvironment:
         self.current_step = 0
         self.portfolio_value = self._compute_portfolio_value()
 
-    def step(self, action: int) -> tuple(list | int, float, bool):
+    def step(self, action: int) -> Tuple[np.array, float, bool]:
         """
         Update the environment with action taken by the agent
 
@@ -28,21 +29,36 @@ class TradingEnvironment:
             reward: float, The reward returned by the environment
             done: bool, Is the episode terminated or truncated
         """
-        self._trade(action)
+        self._check_action_validity(action)
+        self.state = self._trade(action)
         self.current_step += 1
         done = self.current_step >= len(self.pepsi_data) - 1
         reward = self._compute_reward()
 
-        self._update_state()
         return self.state, reward, done
 
     @abstractmethod
-    def _trade(self, action: int) -> tuple(int | float, int, int):
+    def reset(self) -> None:
+        # Not Implemented
+        raise NotImplementedError
+
+    @abstractmethod
+    def _trade(self, action: int) -> np.array:
         # Not Implemented
         raise NotImplementedError
 
     @abstractmethod
     def _get_indicator(self, stock_data: pd.DataFrame) -> int | float:
+        # Not Implemented
+        raise NotImplementedError
+
+    @abstractmethod
+    def _check_action_validity(self, action: int) -> None:
+        # Not Implemented
+        raise NotImplementedError
+
+    @abstractmethod
+    def _compute_portfolio_value(self) -> float:
         # Not Implemented
         raise NotImplementedError
 
@@ -58,17 +74,6 @@ class TradingEnvironment:
         """
         return stock_data.iloc[step]["Close"] - stock_data.iloc[step - 1]["Close"]
 
-    def _update_state(
-        self, new_balance: int | float, new_shares_pepsi: int, new_shares_cola: int
-    ) -> None:
-        self.state = [
-            new_balance,
-            new_shares_pepsi,
-            new_shares_cola,
-            self._get_indicator(self.pepsi_data),
-            self._get_indicator(self.cola_data),
-        ]
-
     def _compute_reward(self) -> float:
         """
         Computes and updates the portfolio value and returns the reward associated
@@ -78,21 +83,3 @@ class TradingEnvironment:
         reward = current_portfolio_value - self.previous_portfolio_value
         self.previous_portfolio_value = current_portfolio_value
         return reward
-
-    def _compute_portfolio_value(self) -> float:
-        """
-        Computes the current portfolio value as
-            V = b + price_p * share_p + price_c * share_c
-        Where
-            V is the portfolio value
-            b the remaining balance
-            price_p and share_p (resp. price_c) the pepsi (resp. coca) stock price and held amount of shares
-        """
-        pepsi_price = self._get_stock_price(self.current_step, self.pepsi_data)
-        cola_price = self._get_stock_price(self.current_step, self.cola_data)
-        return self.state[0] + self.state[1] * pepsi_price + self.state[2] * cola_price
-
-    @abstractmethod
-    def reset(self) -> None:
-        # Not Implemented
-        raise NotImplementedError
